@@ -1,79 +1,28 @@
 import Foundation
 
-struct EnvironmentValues: Sendable {
+struct EnvironmentValues: @unchecked Sendable {
   @TaskLocal static var current = EnvironmentValues()
-  fileprivate let storage = LockedState([String: any Sendable]())
-
-  init() {
-    DispatchQueue.main.async {
-      guard
-        let XCTestObservation = objc_getProtocol("XCTestObservation"),
-        let XCTestObservationCenter = NSClassFromString("XCTestObservationCenter"),
-        let XCTestObservationCenter = XCTestObservationCenter as Any as? NSObjectProtocol,
-        let XCTestObservationCenterShared =
-          XCTestObservationCenter
-          .perform(Selector(("sharedTestObservationCenter")))?
-          .takeUnretainedValue()
-      else { return }
-      let testCaseWillStartBlock: @convention(block) (AnyObject) -> Void = { _ in
-        print("FDSA")
-        EnvironmentValues.$current.withValue(EnvironmentValues.current) {
-          EnvironmentValues.current.storage.setValue([:])
-        }
-      }
-      let testCaseWillStartImp = imp_implementationWithBlock(testCaseWillStartBlock)
-      class_addMethod(
-        TestObserver.self, Selector(("testCaseWillStart:")), testCaseWillStartImp, nil)
-      class_addProtocol(TestObserver.self, XCTestObservation)
-      _ =
-        XCTestObservationCenterShared
-        .perform(Selector(("addTestObserver:")), with: TestObserver())
-    }
-  }
-
+  private let lock = NSLock()
+  private var storage: [String: any Sendable] = [:]
+  
   subscript<K: EnvironmentKey>(key: K.Type) -> K.Value {
     get {
-      storage.withValue {
-        $0[key.storageKey] as? K.Value ?? key.defaultValue
-      }
+      lock.lock()
+      defer { lock.unlock() }
+      let value = storage[key.storageKey] as? K.Value
+      return storage[key.storageKey] as? K.Value ?? key.defaultValue
     }
     set {
-      storage.withValue { $0[key.storageKey] = newValue }
-    }
-  }
-
-  static subscript<K: EnvironmentKey>(key: K.Type) -> K.Value {
-    get {
-      current.storage.withValue {
-        $0[key.storageKey] as? K.Value ?? key.defaultValue
-      }
-    }
-    set {
-      current.storage.withValue { $0[key.storageKey] = newValue }
-    }
-  }
-
-  static subscript<T: Sendable>(_ keyPath: WritableKeyPath<EnvironmentValues, T>) -> T {
-    get {
-      current[keyPath: keyPath]
-    }
-    set {
-      var currentEnvironmentValues = current
-      currentEnvironmentValues[keyPath: keyPath] = newValue
-      $current.withValue(currentEnvironmentValues) {
-        currentEnvironmentValues
-      }
+      lock.lock()
+      defer { lock.unlock() }
+      storage[key.storageKey] = newValue
     }
   }
 }
-
-extension WritableKeyPath: @unchecked Sendable {}
 
 private extension EnvironmentKey {
   static var storageKey: String { "\(Self.self)" }
 }
-
-private final class TestObserver {}
 
 func withDependencies<R>(
   _ updateValuesOperation: (inout EnvironmentValues) throws -> Void,
