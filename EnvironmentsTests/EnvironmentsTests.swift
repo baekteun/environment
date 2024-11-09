@@ -6,25 +6,30 @@
 //
 
 import Testing
+import os
 @testable import Environments
 
 struct EnvironmentsTests {
   @Test
-  func test_basic_environment_access() {
-    // Given
-    let testClass = TestClass()
-    
-    // When
+  func test_basic_environment_access() async {
+    let log = Logger()
+    let testClass = withDependencies {
+      $0.logger = log
+    } operation: {
+      TestClass()
+    }
+
     testClass.logMessage("Hello")
-    
-    // Then
     let logs = testClass.logger.getLogs()
     #expect(logs == ["Hello"])
   }
 
   @Test
-  func test_environment_update() {
-    // Given
+  func test_environment_update() async {
+    @Environment(\.logger) var logger
+    logger.log("HELLO")
+    #expect(logger.getLogs() == ["HELLO"])
+
     let newLogger = Logger()
 
     let testClass = withDependencies {
@@ -32,31 +37,25 @@ struct EnvironmentsTests {
     } operation: {
       TestClass()
     }
-    
-    // When
+
     testClass.logMessage("New message")
     
-    // Then
     let logs = testClass.logger.getLogs()
     #expect(logs == ["New message"])
   }
 
   @Test
-  func test_mutable_locked_state() {
-    // Given
+  func test_mutable_locked_state() async {
     let testClass = withDependencies {
       $0.subscriptionManager = SubscriptionManagerTest()
     } operation: {
       TestClass()
     }
+    
+    testClass.subscribe()
+    testClass.subscribe()
 
-    
-    // When
-    
-    testClass.subscribe()
-    testClass.subscribe()
-    
-    // Then
+    #expect(testClass.subscriptionManager is SubscriptionManagerTest)
     #expect((testClass.subscriptionManager as? SubscriptionManagerTest)?.countState.value == 2)
   }
 }
@@ -74,7 +73,7 @@ struct Logger: Sendable {
 }
 
 struct LoggerKey: EnvironmentKey {
-    static let defaultValue = Logger()
+  static let defaultValue: Logger = Logger()
 }
 
 extension EnvironmentValues {
@@ -89,7 +88,6 @@ final class TestClass {
     @Environment(\.subscriptionManager) var subscriptionManager
     
     func logMessage(_ message: String) {
-      print(logger.getLogs())
         logger.log(message)
     }
     

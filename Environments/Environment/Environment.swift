@@ -12,12 +12,14 @@ struct Environment<T: Sendable> {
   
   public var wrappedValue: T {
     get {
-      let value = EnvironmentValues.$current.withValue(initialValues) {
-        EnvironmentValues.current[keyPath: self.keyPath]
-      }
-      return value
+//      let value = EnvironmentValues.$current.withValue(initialValues) {
+//      }
+      return initialValues[keyPath: self.keyPath]
+//      return value
     }
-//    set { EnvironmentValues[keyPath] = newValue }
+    set {
+//      EnvironmentValues.current[keyPath: keyPath] = newValue
+    }
   }
   
   
